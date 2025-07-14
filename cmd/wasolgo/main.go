@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 	"wasolgo/internal/config"
 	consumer "wasolgo/internal/consume"
@@ -26,6 +29,9 @@ func main() {
 		log.Fatalf("ERROR: Couldn't connect to Redis: %v", err)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	for {
 		dbClient, err := database.ConnectDb(env.DbUrl)
 		if err != nil {
@@ -36,7 +42,6 @@ func main() {
 
 		log.Print("Setting up Outgoing and Incoming Request consumers...")
 
-		ctx := context.Background()
 		var wg sync.WaitGroup
 		errCh := make(chan error, 4)
 
@@ -52,18 +57,20 @@ func main() {
 			}(queueName)
 		}
 
-		wg.Wait()
-		close(errCh)
+		go func() {
+			wg.Wait()
+			close(errCh)
+		}()
 
 		select {
+		case <-ctx.Done():
+			log.Print("Shutdown requested, exiting main loop.")
+			return
 		case err := <-errCh:
 			log.Printf("Error in consumer loop: %v", err)
 			fmt.Printf("ERROR: Consumer loop failed: %v\n", err)
 			log.Print("Reconnecting in 5 seconds...")
 			time.Sleep(5 * time.Second)
-		default:
-			log.Print("Application shutdown requested")
-			return
 		}
 	}
 }

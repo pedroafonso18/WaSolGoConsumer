@@ -89,7 +89,7 @@ func RunConsumer(
 					var resp SendMessageResponse
 					if err := json.Unmarshal(delivery.Body, &resp); err != nil {
 						log.Printf("Failed to deserialize SendMessageResponse: %v", err)
-						delivery.Nack(false, true)
+						delivery.Nack(false, false)
 						return
 					}
 					if resp.StatusString != nil && resp.StatusString.Key != nil && resp.StatusString.Message != nil {
@@ -98,7 +98,7 @@ func RunConsumer(
 						messageJSON, err := json.Marshal(resp.StatusString.Message)
 						if err != nil {
 							log.Printf("Failed to marshal message: %v", err)
-							delivery.Nack(false, true)
+							delivery.Nack(false, false)
 							return
 						}
 						if err := redis.InsertMessageToChat(
@@ -111,7 +111,7 @@ func RunConsumer(
 							nil,
 						); err != nil {
 							log.Printf("Failed to insert message to Redis: %v", err)
-							delivery.Nack(false, true)
+							delivery.Nack(false, false)
 							return
 						}
 					}
@@ -122,7 +122,7 @@ func RunConsumer(
 				}
 				if err != nil {
 					log.Printf("Error processing message: %v", err)
-					delivery.Nack(false, true)
+					delivery.Nack(false, false)
 				} else {
 					if err := delivery.Ack(false); err != nil {
 						log.Printf("Failed to acknowledge message: %v", err)

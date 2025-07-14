@@ -14,12 +14,13 @@ type Request struct {
 }
 
 type Chat struct {
-	ID         int     `json:"id"`
+	ID         string  `json:"id"`
 	Situation  string  `json:"situation"`
 	IsActive   bool    `json:"is_active"`
-	AgentID    *int    `json:"agent_id,omitempty"`
+	AgentID    string  `json:"agent_id"`
 	Tabulation *string `json:"tabulation,omitempty"`
-	CustomerID int     `json:"customer_id"`
+	CustomerID string  `json:"customer_id"`
+	InstanceID string  `json:"instance_id"`
 }
 
 type Message struct {
@@ -28,11 +29,11 @@ type Message struct {
 	To        string `json:"to"`
 	Delivered bool   `json:"delivered"`
 	Text      string `json:"text"`
-	ChatID    int    `json:"chat_id"`
+	ChatID    string `json:"chat_id"`
 }
 
 type Customer struct {
-	ID         int     `json:"id"`
+	ID         string  `json:"id"`
 	Name       string  `json:"name"`
 	Number     string  `json:"number"`
 	LastChatID *string `json:"last_chat_id,omitempty"`
