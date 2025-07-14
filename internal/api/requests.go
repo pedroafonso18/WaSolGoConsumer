@@ -8,7 +8,7 @@ import (
 	"wasolgo/internal/parser"
 )
 
-func SendRequest(req parser.Request) error {
+func SendRequest(req *parser.Request) error {
 	jsonBody, err := json.Marshal(req.Body)
 	if err != nil {
 		fmt.Printf("Error when marshalling the json: %v", err)
