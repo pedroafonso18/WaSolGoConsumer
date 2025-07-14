@@ -15,7 +15,7 @@ import (
 func main() {
 	env, err := config.LoadEnv()
 	if err != nil {
-		log.Fatalf("ERROR: Couldn't retrieve .env: %v", err)
+		fmt.Printf("Error: Couldn't retrieve .env: %v", err)
 	}
 
 	log.Print("Starting application - Check Logs below...")
