@@ -35,13 +35,16 @@ func RunConsumer(
 	}
 	defer ch.Close()
 
+	args := amqp.Table{
+		"x-queue-type": "quorum",
+	}
 	_, err = ch.QueueDeclare(
 		queueName,
 		true,  // durable
 		false, // autoDelete
 		false, // exclusive
 		false, // noWait
-		nil,   // arguments (or use your args if needed)
+		args,  // arguments
 	)
 	if err != nil {
 		return err
@@ -83,7 +86,7 @@ func RunConsumer(
 				var err error
 				switch queueName {
 				case "incoming_requests", "evolution.messages.upsert":
-					err = process.ProcessIncoming(delivery, redisConn)
+					err = process.ProcessIncoming(delivery, redisConn, dbClient)
 				case "outgoing_requests":
 					err = process.ProcessOutgoing(delivery, dbClient)
 				case "evolution.send.message":

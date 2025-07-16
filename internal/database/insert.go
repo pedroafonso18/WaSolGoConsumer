@@ -29,8 +29,8 @@ SET situation = $2, is_active = $3, agent_id = $4, tabulation = $5, customer_id 
 }
 
 func UpsertMessages(db *sql.DB, msg *parser.Message) error {
-	query := "INSERT INTO messages (id, \"from\", \"to\", text, delivered, chat_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET \"from\" = $2, \"to\" = $3, text = $4, delivered = $5, chat_id = $6"
-	_, err := db.Exec(query, msg.ID, msg.From, msg.To, msg.Text, msg.Delivered, msg.ChatID)
+	query := "INSERT INTO messages (\"from\", \"to\", text, delivered, chat_id) VALUES ($1, $2, $3, $4, $5)"
+	_, err := db.Exec(query, msg.From, msg.To, msg.Text, msg.Delivered, msg.ChatID)
 	if err != nil {
 		return fmt.Errorf("couldn't insert message into database: %w", err)
 	}

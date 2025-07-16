@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -9,6 +10,9 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	rdb "github.com/redis/go-redis/v9"
+
+	"wasolgo/internal/database"
+	"wasolgo/internal/parser"
 )
 
 func getStringPointer(m map[string]interface{}, path ...string) (string, bool) {
@@ -26,7 +30,7 @@ func getStringPointer(m map[string]interface{}, path ...string) (string, bool) {
 	return "", false
 }
 
-func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client) error {
+func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error {
 	message := string(delivery.Body)
 	fmt.Printf("Received message: %s", message)
 
@@ -132,6 +136,21 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert message to chat: %w", err)
+	}
+
+	// Insert into database (like outgoing)
+	msg := parser.Message{
+		From:   from,
+		To:     to,
+		Text:   text,
+		ChatID: chatID,
+		// Delivered: false, // Set as needed, default false
+	}
+	if db != nil {
+		dbErr := database.UpsertMessages(db, &msg)
+		if dbErr != nil {
+			return fmt.Errorf("failed to insert message into database: %w", dbErr)
+		}
 	}
 
 	return nil

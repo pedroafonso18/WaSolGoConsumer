@@ -69,6 +69,24 @@ func ProcessOutgoing(delivery amqp.Delivery, client *sql.DB) error {
 		return fmt.Errorf("failed to marshal body field: %w", err)
 	}
 
+	action := strings.ToLower(getString(envelope, "action"))
+	msgType := strings.ToLower(getString(envelope, "type"))
+
+	if msgType == "sendrequest" || action == "sendmessage" {
+		fmt.Print("Starting SendRequest process...")
+		var req parser.Request
+		if err := json.Unmarshal(delivery.Body, &req); err != nil {
+			return fmt.Errorf("failed to unmarshal SendRequest message: %w", err)
+		}
+		err := api.SendRequest(&req)
+		if err != nil {
+			return fmt.Errorf("error on sending request: %w", err)
+		} else {
+			fmt.Print("Successfully sent request!")
+			return nil
+		}
+	}
+
 	if strings.Contains(message, "upsertChat") {
 		fmt.Print("Starting UpsertChat process...")
 		var chatMap map[string]interface{}
@@ -146,19 +164,6 @@ func ProcessOutgoing(delivery amqp.Delivery, client *sql.DB) error {
 			return fmt.Errorf("error on upserting message into the db: %w", err)
 		} else {
 			fmt.Print("Successfully inserted message into db!")
-			return nil
-		}
-	} else if strings.Contains(message, "sendRequest") {
-		fmt.Print("Starting SendRequest process...")
-		var req parser.Request
-		if err := json.Unmarshal(bodyBytes, &req); err != nil {
-			return fmt.Errorf("failed to unmarshal SendRequest body: %w", err)
-		}
-		err := api.SendRequest(&req)
-		if err != nil {
-			return fmt.Errorf("error on sending request: %w", err)
-		} else {
-			fmt.Print("Successfully sent request!")
 			return nil
 		}
 	}
