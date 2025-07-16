@@ -35,6 +35,18 @@ func RunConsumer(
 	}
 	defer ch.Close()
 
+	_, err = ch.QueueDeclare(
+		queueName,
+		true,  // durable
+		false, // autoDelete
+		false, // exclusive
+		false, // noWait
+		nil,   // arguments (or use your args if needed)
+	)
+	if err != nil {
+		return err
+	}
+
 	msgs, err := ch.Consume(
 		queueName,
 		"",
