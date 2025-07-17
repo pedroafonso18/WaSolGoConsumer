@@ -69,15 +69,22 @@ func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid 
 	var chatKey string
 	exists := int64(0)
 	var err error
+	foundInSet := false
 	for _, id := range possibleIDs {
 		key := fmt.Sprintf("chat:%s", id)
 		exists, err = rdb.Exists(ctx, key).Result()
 		if err != nil {
 			return err
 		}
+		inSet, err := rdb.SIsMember(ctx, "chats", id).Result()
+		if err != nil {
+			return err
+		}
 		if exists > 0 {
 			chatKey = key
-			break
+		}
+		if inSet {
+			foundInSet = true
 		}
 	}
 	if exists == 0 {
@@ -112,10 +119,12 @@ func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid 
 			return err
 		}
 		log.Printf("Created new chat entry in Redis (as list): %s", chatKey)
-		if _, err := rdb.SAdd(ctx, "chats", normChatID).Result(); err != nil {
-			return err
+		if !foundInSet {
+			if _, err := rdb.SAdd(ctx, "chats", normChatID).Result(); err != nil {
+				return err
+			}
+			log.Printf("Added chat_id %s to 'chats' set", normChatID)
 		}
-		log.Printf("Added chat_id %s to 'chats' set", normChatID)
 	} else {
 		log.Printf("Chat entry already exists in Redis: %s", chatKey)
 	}
