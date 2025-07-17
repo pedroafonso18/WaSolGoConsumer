@@ -27,11 +27,9 @@ func NormalizeChatID(jid string) string {
 			countryCode := number[:2]
 			areaCode := number[2:4]
 			numPart := number[4:]
-			// If numPart is 8 digits, add a 9
 			if len(numPart) == 8 {
 				numPart = "9" + numPart
 			}
-			// If numPart is 9 digits and starts with 9, use as is
 			normalizedNumber := countryCode + areaCode + numPart
 			return fmt.Sprintf("%s@%s", normalizedNumber, domain)
 		}
@@ -39,7 +37,6 @@ func NormalizeChatID(jid string) string {
 	return jid
 }
 
-// Helper to generate both possible chat IDs (original and normalized)
 func PossibleChatIDs(jid string) []string {
 	parts := strings.SplitN(jid, "@", 2)
 	if len(parts) != 2 {
@@ -51,14 +48,11 @@ func PossibleChatIDs(jid string) []string {
 		areaCode := number[2:4]
 		numPart := number[4:]
 		ids := []string{}
-		// Original
 		ids = append(ids, fmt.Sprintf("%s@%s", number, domain))
-		// Normalized (if not already normalized)
 		if len(numPart) == 8 {
 			normalized := countryCode + areaCode + "9" + numPart
 			ids = append(ids, fmt.Sprintf("%s@%s", normalized, domain))
 		} else if len(numPart) == 9 && strings.HasPrefix(numPart, "9") {
-			// Already normalized, just add as possible (if not already in list)
 			normalized := countryCode + areaCode + numPart
 			if normalized != number {
 				ids = append(ids, fmt.Sprintf("%s@%s", normalized, domain))
@@ -69,7 +63,6 @@ func PossibleChatIDs(jid string) []string {
 	return []string{jid}
 }
 
-// FindExistingChatID checks Redis for both possible chat IDs (with and without the 9) and returns the one that exists, or the normalized one if neither exists.
 func FindExistingChatID(ctx context.Context, rdb *redis.Client, chatID string) (string, error) {
 	possibleIDs := PossibleChatIDs(chatID)
 	log.Printf("[FindExistingChatID] Checking possible chat IDs for %s: %v", chatID, possibleIDs)
@@ -86,7 +79,6 @@ func FindExistingChatID(ctx context.Context, rdb *redis.Client, chatID string) (
 			return id, nil
 		}
 	}
-	// If none exist, return the normalized one
 	normalized := NormalizeChatID(chatID)
 	log.Printf("[FindExistingChatID] No existing chat found, using normalized: %s", normalized)
 	return normalized, nil
