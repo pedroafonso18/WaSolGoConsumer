@@ -116,10 +116,25 @@ func RunConsumer(
 							delivery.Nack(false, false)
 							return
 						}
+
+						var chatKeyToUse string
+						possibleIDs := redis.PossibleChatIDs(resp.StatusString.Key.RemoteJid)
+						for _, id := range possibleIDs {
+							key := "chat:" + id
+							exists, err := redisConn.Exists(context.Background(), key).Result()
+							if err == nil && exists > 0 {
+								chatKeyToUse = id
+								break
+							}
+						}
+						if chatKeyToUse == "" {
+							chatKeyToUse = chatID
+						}
+
 						if err := redis.InsertMessageToChat(
 							context.Background(),
 							redisConn,
-							chatID,
+							chatKeyToUse,
 							string(messageJSON),
 							remoteJid,
 							nil,

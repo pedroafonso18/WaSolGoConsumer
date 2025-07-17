@@ -37,15 +37,51 @@ func NormalizeChatID(jid string) string {
 	return jid
 }
 
+func PossibleChatIDs(jid string) []string {
+	parts := strings.SplitN(jid, "@", 2)
+	if len(parts) != 2 {
+		return []string{jid}
+	}
+	number, domain := parts[0], parts[1]
+	if strings.HasPrefix(number, "55") && len(number) >= 11 {
+		countryCode := number[:2]
+		areaCode := number[2:4]
+		rest := number[4:]
+		with9 := rest
+		if !strings.HasPrefix(rest, "9") {
+			with9 = "9" + rest
+		}
+		without9 := rest
+		if strings.HasPrefix(rest, "9") {
+			without9 = rest[1:]
+		}
+		return []string{
+			fmt.Sprintf("%s%s%s@%s", countryCode, areaCode, with9, domain),
+			fmt.Sprintf("%s%s%s@%s", countryCode, areaCode, without9, domain),
+		}
+	}
+	return []string{jid}
+}
+
 func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid string, chatMetadata *string, messageData *[]byte) error {
 	normChatID := NormalizeChatID(chatID)
-	chatKey := fmt.Sprintf("chat:%s", normChatID)
-	exists, err := rdb.Exists(ctx, chatKey).Result()
-	if err != nil {
-		return err
+	possibleIDs := PossibleChatIDs(chatID)
+	var chatKey string
+	exists := int64(0)
+	var err error
+	for _, id := range possibleIDs {
+		key := fmt.Sprintf("chat:%s", id)
+		exists, err = rdb.Exists(ctx, key).Result()
+		if err != nil {
+			return err
+		}
+		if exists > 0 {
+			chatKey = key
+			break
+		}
 	}
-
 	if exists == 0 {
+		chatKey = fmt.Sprintf("chat:%s", normChatID)
 		var chatData string
 		if chatMetadata != nil {
 			chatData = *chatMetadata
