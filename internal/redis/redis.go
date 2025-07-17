@@ -23,72 +23,90 @@ func NormalizeChatID(jid string) string {
 	parts := strings.SplitN(jid, "@", 2)
 	if len(parts) == 2 {
 		number, domain := parts[0], parts[1]
-		if strings.HasPrefix(number, "55") && len(number) >= 12 {
+		if strings.HasPrefix(number, "55") && len(number) > 4 {
 			countryCode := number[:2]
 			areaCode := number[2:4]
-			rest := number[4:]
-			if !strings.HasPrefix(rest, "9") {
-				rest = "9" + rest
+			numPart := number[4:]
+			// If numPart is 8 digits, add a 9
+			if len(numPart) == 8 {
+				numPart = "9" + numPart
 			}
-			normalizedNumber := countryCode + areaCode + rest
+			// If numPart is 9 digits and starts with 9, use as is
+			normalizedNumber := countryCode + areaCode + numPart
 			return fmt.Sprintf("%s@%s", normalizedNumber, domain)
 		}
 	}
 	return jid
 }
 
+// Helper to generate both possible chat IDs (original and normalized)
 func PossibleChatIDs(jid string) []string {
 	parts := strings.SplitN(jid, "@", 2)
 	if len(parts) != 2 {
 		return []string{jid}
 	}
 	number, domain := parts[0], parts[1]
-	if strings.HasPrefix(number, "55") && len(number) >= 11 {
+	if strings.HasPrefix(number, "55") && len(number) > 4 {
 		countryCode := number[:2]
 		areaCode := number[2:4]
-		rest := number[4:]
-		with9 := rest
-		if !strings.HasPrefix(rest, "9") {
-			with9 = "9" + rest
+		numPart := number[4:]
+		ids := []string{}
+		// Original
+		ids = append(ids, fmt.Sprintf("%s@%s", number, domain))
+		// Normalized (if not already normalized)
+		if len(numPart) == 8 {
+			normalized := countryCode + areaCode + "9" + numPart
+			ids = append(ids, fmt.Sprintf("%s@%s", normalized, domain))
+		} else if len(numPart) == 9 && strings.HasPrefix(numPart, "9") {
+			// Already normalized, just add as possible (if not already in list)
+			normalized := countryCode + areaCode + numPart
+			if normalized != number {
+				ids = append(ids, fmt.Sprintf("%s@%s", normalized, domain))
+			}
 		}
-		without9 := rest
-		if strings.HasPrefix(rest, "9") {
-			without9 = rest[1:]
-		}
-		return []string{
-			fmt.Sprintf("%s%s%s@%s", countryCode, areaCode, with9, domain),
-			fmt.Sprintf("%s%s%s@%s", countryCode, areaCode, without9, domain),
-		}
+		return ids
 	}
 	return []string{jid}
 }
 
-func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid string, chatMetadata *string, messageData *[]byte) error {
-	normChatID := NormalizeChatID(chatID)
+// FindExistingChatID checks Redis for both possible chat IDs (with and without the 9) and returns the one that exists, or the normalized one if neither exists.
+func FindExistingChatID(ctx context.Context, rdb *redis.Client, chatID string) (string, error) {
 	possibleIDs := PossibleChatIDs(chatID)
-	var chatKey string
-	exists := int64(0)
-	var err error
-	foundInSet := false
+	log.Printf("[FindExistingChatID] Checking possible chat IDs for %s: %v", chatID, possibleIDs)
 	for _, id := range possibleIDs {
-		key := fmt.Sprintf("chat:%s", id)
-		exists, err = rdb.Exists(ctx, key).Result()
+		key := "chat:" + id
+		exists, err := rdb.Exists(ctx, key).Result()
 		if err != nil {
-			return err
+			log.Printf("[FindExistingChatID] Error checking key %s: %v", key, err)
+			return "", err
 		}
-		inSet, err := rdb.SIsMember(ctx, "chats", id).Result()
-		if err != nil {
-			return err
-		}
+		log.Printf("[FindExistingChatID] Key %s exists: %d", key, exists)
 		if exists > 0 {
-			chatKey = key
-		}
-		if inSet {
-			foundInSet = true
+			log.Printf("[FindExistingChatID] Found existing chat key: %s", key)
+			return id, nil
 		}
 	}
+	// If none exist, return the normalized one
+	normalized := NormalizeChatID(chatID)
+	log.Printf("[FindExistingChatID] No existing chat found, using normalized: %s", normalized)
+	return normalized, nil
+}
+
+func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid string, chatMetadata *string, messageData *[]byte) error {
+	existingChatID, err := FindExistingChatID(ctx, rdb, chatID)
+	if err != nil {
+		return err
+	}
+	chatKey := "chat:" + existingChatID
+	exists, err := rdb.Exists(ctx, chatKey).Result()
+	if err != nil {
+		return err
+	}
+	foundInSet, err := rdb.SIsMember(ctx, "chats", existingChatID).Result()
+	if err != nil {
+		return err
+	}
 	if exists == 0 {
-		chatKey = fmt.Sprintf("chat:%s", normChatID)
 		var chatData string
 		if chatMetadata != nil {
 			chatData = *chatMetadata
@@ -104,7 +122,7 @@ func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid 
 				}
 			}
 			meta := map[string]interface{}{
-				"id":          normChatID,
+				"id":          existingChatID,
 				"situation":   "enqueued",
 				"is_active":   true,
 				"agent_id":    nil,
@@ -120,10 +138,10 @@ func EnsureChatExists(ctx context.Context, rdb *redis.Client, chatID, remoteJid 
 		}
 		log.Printf("Created new chat entry in Redis (as list): %s", chatKey)
 		if !foundInSet {
-			if _, err := rdb.SAdd(ctx, "chats", normChatID).Result(); err != nil {
+			if _, err := rdb.SAdd(ctx, "chats", existingChatID).Result(); err != nil {
 				return err
 			}
-			log.Printf("Added chat_id %s to 'chats' set", normChatID)
+			log.Printf("Added chat_id %s to 'chats' set", existingChatID)
 		}
 	} else {
 		log.Printf("Chat entry already exists in Redis: %s", chatKey)
@@ -140,17 +158,21 @@ func InsertMessageToChat(
 	chatMetadata *string,
 	messageData *[]byte,
 ) error {
-	normChatID := NormalizeChatID(chatID)
-	log.Printf("Inserting message into chat:%s for remote_jid:%s", normChatID, remoteJid)
-	if err := EnsureChatExists(ctx, rdb, normChatID, remoteJid, chatMetadata, messageData); err != nil {
+	existingChatID, err := FindExistingChatID(ctx, rdb, chatID)
+	if err != nil {
+		log.Printf("Failed to resolve existing chat ID: %v", err)
+		return err
+	}
+	log.Printf("Inserting message into chat:%s for remote_jid:%s", existingChatID, remoteJid)
+	if err := EnsureChatExists(ctx, rdb, existingChatID, remoteJid, chatMetadata, messageData); err != nil {
 		log.Printf("Failed to ensure chat exists: %v", err)
 		return err
 	}
-	key := fmt.Sprintf("chat:%s:messages", normChatID)
+	key := fmt.Sprintf("chat:%s:messages", existingChatID)
 	log.Printf("Pushing message to Redis list: %s", key)
 	if _, err := rdb.RPush(ctx, key, messageJSON).Result(); err != nil {
 		return err
 	}
-	log.Printf("Successfully inserted message into Redis for chat:%s", normChatID)
+	log.Printf("Successfully inserted message into Redis for chat:%s", existingChatID)
 	return nil
 }
