@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	redis "wasolgo/internal/redis"
 
@@ -83,6 +84,7 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		body      string
 		msgType   string
 		timestamp string
+		extension string
 	)
 	if data, ok := value["data"].(map[string]interface{}); ok {
 		msgID, _ = getStringPointer(data, "key", "id")
@@ -93,6 +95,10 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		msgType, _ = getStringPointer(data, "messageType")
 		if ts, ok := value["date_time"].(string); ok {
 			timestamp = ts
+		}
+
+		if ext, ok := value["extension"].(string); ok && ext != "" {
+			extension = ext
 		}
 
 		switch msgType {
@@ -108,8 +114,15 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 			text = "Áudio enviado"
 		case "documentMessage":
 			base64, _ := getStringPointer(data, "message", "base64")
+			fileName, _ := getStringPointer(data, "message", "documentMessage", "fileName")
 			body = base64
 			text = "📄 Documento enviado"
+			// Only extract extension from fileName if not already set
+			if extension == "" && fileName != "" {
+				if dot := strings.LastIndex(fileName, "."); dot != -1 && dot < len(fileName)-1 {
+					extension = fileName[dot+1:]
+				}
+			}
 		}
 	}
 
@@ -121,6 +134,10 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		"body":      body,
 		"type":      msgType,
 		"timestamp": timestamp,
+	}
+	// Add extension if present
+	if extension != "" {
+		normalized["extension"] = extension
 	}
 	messageJSON, _ := json.Marshal(normalized)
 
