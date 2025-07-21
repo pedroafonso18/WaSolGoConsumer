@@ -106,6 +106,10 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 			base64, _ := getStringPointer(data, "message", "base64")
 			body = "data:audio/ogg;base64," + base64
 			text = "Áudio enviado"
+		case "documentMessage":
+			base64, _ := getStringPointer(data, "message", "base64")
+			body = base64
+			text = "📄 Documento enviado"
 		}
 	}
 

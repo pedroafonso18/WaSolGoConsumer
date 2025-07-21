@@ -94,8 +94,23 @@ type MessageKey struct {
 	ID        string `json:"id"`
 }
 
+type DocumentMessage struct {
+	Url               string `json:"url"`
+	Mimetype          string `json:"mimetype"`
+	FileSha256        string `json:"fileSha256"`
+	FileLength        string `json:"fileLength"`
+	PageCount         int    `json:"pageCount"`
+	MediaKey          string `json:"mediaKey"`
+	FileName          string `json:"fileName"`
+	FileEncSha256     string `json:"fileEncSha256"`
+	DirectPath        string `json:"directPath"`
+	MediaKeyTimestamp string `json:"mediaKeyTimestamp"`
+}
+
 type MessageContent struct {
-	Conversation *string `json:"conversation,omitempty"`
+	Conversation    *string          `json:"conversation,omitempty"`
+	DocumentMessage *DocumentMessage `json:"documentMessage,omitempty"`
+	Base64          *string          `json:"base64,omitempty"`
 }
 
 type SendMessageResponse struct {

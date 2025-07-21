@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"wasolgo/internal/parser"
 	"wasolgo/internal/process"
 	"wasolgo/internal/redis"
 
@@ -83,6 +84,7 @@ func RunConsumer(
 			}
 
 			go func(delivery amqp.Delivery) {
+				log.Printf("[DEBUG] Received delivery for queue: %s", queueName)
 				var err error
 				switch queueName {
 				case "incoming_requests", "evolution.messages.upsert":
@@ -108,14 +110,41 @@ func RunConsumer(
 						return
 					}
 					if resp.StatusString != nil && resp.StatusString.Key != nil && resp.StatusString.Message != nil {
+						log.Printf("[DEBUG] Entered evolution.send.message handler, resp: %+v", resp)
 						chatID := redis.NormalizeChatID(resp.StatusString.Key.RemoteJid)
 						remoteJid := chatID
-						messageJSON, err := json.Marshal(resp.StatusString.Message)
+
+						var msgContent parser.MessageContent
+						msgBytes, _ := json.Marshal(resp.StatusString.Message)
+						_ = json.Unmarshal(msgBytes, &msgContent)
+
+						var messageMap map[string]interface{}
+						_ = json.Unmarshal(msgBytes, &messageMap)
+
+						log.Printf("[DEBUG] resp.StatusString.Message: %v", resp.StatusString.Message)
+						log.Printf("[DEBUG] msgContent: %+v", msgContent)
+						log.Printf("[DEBUG] messageMap: %+v", messageMap)
+
+						var base64Body string
+						if msgContent.DocumentMessage != nil && msgContent.Base64 != nil {
+							base64Body = *msgContent.Base64
+						} else if b64, ok := messageMap["base64"]; ok {
+							if b64Str, ok := b64.(string); ok {
+								base64Body = b64Str
+							}
+						}
+						if base64Body != "" {
+							messageMap["body"] = base64Body
+						}
+
+						messageJSON, err := json.Marshal(messageMap)
 						if err != nil {
 							log.Printf("Failed to marshal message: %v", err)
 							delivery.Nack(false, false)
 							return
 						}
+
+						log.Printf("[DEBUG] Final messageJSON to Redis: %s", string(messageJSON))
 
 						var chatKeyToUse string
 						possibleIDs := redis.PossibleChatIDs(resp.StatusString.Key.RemoteJid)
@@ -149,6 +178,8 @@ func RunConsumer(
 						log.Printf("Failed to acknowledge message: %v", err)
 					}
 					return
+				default:
+					log.Printf("[DEBUG] Unhandled queueName: %s", queueName)
 				}
 				if err != nil {
 					log.Printf("Error processing message: %v", err)
