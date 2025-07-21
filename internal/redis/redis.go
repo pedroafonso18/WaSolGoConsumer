@@ -168,3 +168,33 @@ func InsertMessageToChat(
 	log.Printf("Successfully inserted message into Redis for chat:%s", existingChatID)
 	return nil
 }
+
+func UpdateChatToOpen(ctx context.Context, rdb *redis.Client, chatID string) error {
+	existingChatID, err := FindExistingChatID(ctx, rdb, chatID)
+	if err != nil {
+		return err
+	}
+	chatKey := "chat:" + existingChatID
+	chatJSON, err := rdb.LIndex(ctx, chatKey, 0).Result()
+	if err != nil {
+		return err
+	}
+	var chatObj map[string]interface{}
+	if err := json.Unmarshal([]byte(chatJSON), &chatObj); err != nil {
+		return err
+	}
+	chatObj["situation"] = "enqueued"
+	chatObj["is_active"] = true
+	chatObj["tabulation"] = nil
+	chatObj["tags"] = nil
+	chatObj["department"] = "aguardando_colaborador"
+	chatObj["agent_id"] = nil
+	updatedJSON, err := json.Marshal(chatObj)
+	if err != nil {
+		return err
+	}
+	if err := rdb.LSet(ctx, chatKey, 0, updatedJSON).Err(); err != nil {
+		return err
+	}
+	return nil
+}

@@ -117,7 +117,6 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 			fileName, _ := getStringPointer(data, "message", "documentMessage", "fileName")
 			body = base64
 			text = "📄 Documento enviado"
-			// Only extract extension from fileName if not already set
 			if extension == "" && fileName != "" {
 				if dot := strings.LastIndex(fileName, "."); dot != -1 && dot < len(fileName)-1 {
 					extension = fileName[dot+1:]
@@ -135,7 +134,6 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		"type":      msgType,
 		"timestamp": timestamp,
 	}
-	// Add extension if present
 	if extension != "" {
 		normalized["extension"] = extension
 	}
@@ -144,6 +142,25 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 	var messageBytes []byte
 	if valueBytes, err := json.Marshal(value); err == nil {
 		messageBytes = valueBytes
+	}
+
+	{
+		ctx := context.Background()
+		existingChatID, err := redis.FindExistingChatID(ctx, rdb, chatID)
+		if err == nil {
+			chatKey := "chat:" + existingChatID
+			chatJSON, err := rdb.LIndex(ctx, chatKey, 0).Result()
+			if err == nil {
+				var chatObj map[string]interface{}
+				if err := json.Unmarshal([]byte(chatJSON), &chatObj); err == nil {
+					situation, _ := chatObj["situation"].(string)
+					isActive, _ := chatObj["is_active"].(bool)
+					if situation == "finished" || !isActive {
+						_ = redis.UpdateChatToOpen(ctx, rdb, chatID)
+					}
+				}
+			}
+		}
 	}
 
 	err := redis.InsertMessageToChat(
@@ -159,13 +176,11 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		return fmt.Errorf("failed to insert message to chat: %w", err)
 	}
 
-	// Insert into database (like outgoing)
 	msg := parser.Message{
 		From:   from,
 		To:     to,
 		Text:   text,
 		ChatID: chatID,
-		// Delivered: false, // Set as needed, default false
 	}
 	if db != nil {
 		dbErr := database.UpsertMessages(db, &msg)
