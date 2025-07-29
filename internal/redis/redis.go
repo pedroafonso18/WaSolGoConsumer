@@ -198,3 +198,20 @@ func UpdateChatToOpen(ctx context.Context, rdb *redis.Client, chatID string) err
 	}
 	return nil
 }
+
+func GetChat(ctx context.Context, rdb *redis.Client, chatID string) (map[string]interface{}, error) {
+	existingChatID, err := FindExistingChatID(ctx, rdb, chatID)
+	if err != nil {
+		return nil, err
+	}
+	chatKey := "chat:" + existingChatID
+	chatJSON, err := rdb.LIndex(ctx, chatKey, 0).Result()
+	if err != nil {
+		return nil, err
+	}
+	var chatObj map[string]interface{}
+	if err := json.Unmarshal([]byte(chatJSON), &chatObj); err != nil {
+		return nil, err
+	}
+	return chatObj, nil
+}

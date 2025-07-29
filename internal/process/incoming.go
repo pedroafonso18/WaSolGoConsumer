@@ -9,6 +9,8 @@ import (
 
 	redis "wasolgo/internal/redis"
 
+	"wasolgo/internal/api"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 	rdb "github.com/redis/go-redis/v9"
 
@@ -186,6 +188,48 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		dbErr := database.UpsertMessages(db, &msg)
 		if dbErr != nil {
 			return fmt.Errorf("failed to insert message into database: %w", dbErr)
+		}
+
+		webhooks, err := database.GetAllWebhooks(db)
+		if err == nil {
+			ctx := context.Background()
+			var department, agent, tag string
+			var isOpen bool
+			if chatInfo, err := redis.GetChat(ctx, rdb, chatID); err == nil {
+				if dep, ok := chatInfo["department"].(string); ok {
+					department = dep
+				}
+				if ag, ok := chatInfo["agent_id"].(string); ok {
+					agent = ag
+				}
+				if tg, ok := chatInfo["tags"].(string); ok {
+					tag = tg
+				}
+				if open, ok := chatInfo["is_active"].(bool); ok {
+					isOpen = open
+				}
+			}
+			connID, _ := getStringPointer(value, "instance_id")
+			if connID == "" {
+				connID, _ = getStringPointer(value, "data", "instanceId")
+			}
+			payload := api.WebhookMessage{
+				Conn:       connID,
+				Message:    text,
+				SentBy:     from,
+				Department: department,
+				Agent:      agent,
+				Tag:        tag,
+				IsOpen:     isOpen,
+			}
+			for _, wh := range *webhooks {
+				if wh.ReceiveMessage {
+					if wh.Conn != nil && connID != "" && *wh.Conn != connID && !wh.IsGlobal {
+						continue
+					}
+					go api.SendWebhook(wh.Url, &payload)
+				}
+			}
 		}
 	}
 
