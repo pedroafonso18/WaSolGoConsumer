@@ -191,7 +191,12 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 		}
 
 		webhooks, err := database.GetAllWebhooks(db)
-		if err == nil {
+		if err != nil {
+			fmt.Printf("[DEBUG] Failed to get webhooks: %v", err)
+		} else if webhooks == nil || len(*webhooks) == 0 {
+			fmt.Printf("[DEBUG] No webhooks configured")
+		} else {
+			fmt.Printf("[DEBUG] Found %d webhooks", len(*webhooks))
 			ctx := context.Background()
 			var department, agent, tag string
 			var isOpen bool
@@ -222,15 +227,24 @@ func ProcessIncoming(delivery amqp.Delivery, rdb *rdb.Client, db *sql.DB) error 
 				Tag:        tag,
 				IsOpen:     isOpen,
 			}
+			webhookSent := false
 			for _, wh := range *webhooks {
 				if wh.ReceiveMessage {
 					if wh.Conn != nil && connID != "" && *wh.Conn != connID && !wh.IsGlobal {
+						fmt.Printf("[DEBUG] Webhook filtered out: conn mismatch (webhook: %s, message: %s)", *wh.Conn, connID)
 						continue
 					}
+					fmt.Printf("[DEBUG] Sending webhook to: %s", wh.Url)
 					go api.SendWebhook(wh.Url, &payload)
+					webhookSent = true
 				}
 			}
+			if !webhookSent {
+				fmt.Printf("[DEBUG] No webhooks were sent (all filtered out or not configured for message)")
+			}
 		}
+	} else {
+		fmt.Printf("[DEBUG] Database is nil, skipping webhook logic")
 	}
 
 	return nil
